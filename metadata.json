@@ -1,0 +1,6 @@
+{
+  "name": "Murali Karthik Portfolio",
+  "description": "Interactive modern 3D portfolio for Murali Karthik - AI & Software Developer",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

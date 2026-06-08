@@ -1,0 +1,24 @@
+[build]
+  # Designates the static build folder compiled by Vite
+  publish = "dist"
+  command = "npm run build"
+  # Location of Serverless Functions
+  functions = "netlify/functions"
+
+[functions]
+  # Tell Netlify to bundle the serverless functions as ES Modules or use automated bundlers
+  node_bundler = "esbuild"
+
+# Elegant route rewrites
+# This maps client-side requests from "/api/chat" to "/.netlify/functions/chat" transparently
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+# Direct-fallback routing for standard Single Page Application (SPA) routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
