@@ -62,7 +62,11 @@ async function getPortfolioData(): Promise<any> {
       const docRef = doc(firestoreDb, "content", "main");
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        return docSnap.data();
+        const data = docSnap.data();
+        if (data) {
+          const { writeSecret, ...safeData } = data;
+          return safeData;
+        }
       }
     } catch (err: any) {
       console.warn("⚠️ Failed to read Firestore, falling back to local file...", err.message);
@@ -77,13 +81,18 @@ async function getPortfolioData(): Promise<any> {
     if (firestoreDb) {
       try {
         const docRef = doc(firestoreDb, "content", "main");
-        await setDoc(docRef, parsed);
+        const securePayload = {
+          ...parsed,
+          writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6"
+        };
+        await setDoc(docRef, securePayload);
         console.log("🌱 Successfully seeded Firestore on Netlify with initial data.json");
       } catch (err: any) {
         console.error("⚠️ Failed to seed Firestore on Netlify:", err.message);
       }
     }
-    return parsed;
+    const { writeSecret, ...safeParsed } = parsed;
+    return safeParsed;
   }
 
   throw new Error("Could not load portfolio data from Firestore or local fallback");
@@ -145,7 +154,11 @@ export const handler: Handler = async (event, context) => {
 
       if (firestoreDb) {
         const docRef = doc(firestoreDb, "content", "main");
-        await setDoc(docRef, payload);
+        const securePayload = {
+          ...payload,
+          writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6"
+        };
+        await setDoc(docRef, securePayload);
       } else {
         // Fallback local write (might be read-only/transient on Netlify but let's have it)
         const targetPaths = [

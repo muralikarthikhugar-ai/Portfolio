@@ -164,7 +164,12 @@ ${unstructuredKnowledge}
 app.get("/api/content", async (req, res) => {
   try {
     const data = await getPortfolioData();
-    res.json(data);
+    if (data) {
+      const { writeSecret, ...safeData } = data;
+      res.json(safeData);
+    } else {
+      res.json(data);
+    }
   } catch (error) {
     console.error("Error reading data", error);
     res.status(500).json({ error: "Failed to read data" });

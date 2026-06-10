@@ -1,8 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    match /content/main {
+      allow read: if true;
+      allow write: if request.resource.data.writeSecret == "MuraliKarthik_SecureWriteSecret_2026_a8d7e6";
     }
   }
 }
