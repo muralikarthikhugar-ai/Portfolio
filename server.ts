@@ -19,22 +19,32 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password";
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_jwt_secret_do_not_use_in_prod";
 
-// Initialize Firebase Admin
+// Initialize Firebase Admin dynamically and lazily
 let db: FirebaseFirestore.Firestore | null = null;
-try {
-  const firebaseConfig = require("./firebase-applet-config.json");
-  const adminApp = adminInitializeApp({ projectId: firebaseConfig.projectId });
-  db = adminGetFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
-  console.log("🔥 Firebase Admin initialized successfully.");
-} catch (error) {
-  console.log("⚠️ Could not initialize Firebase Admin SDK. Will fallback to data.json. Error:", (error as Error).message);
+let initializedFirebaseAdmin = false;
+
+async function getFirestoreDb(): Promise<FirebaseFirestore.Firestore | null> {
+  if (initializedFirebaseAdmin) return db;
+  initializedFirebaseAdmin = true;
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    const configStr = await fs.readFile(configPath, "utf-8");
+    const firebaseConfig = JSON.parse(configStr);
+    const adminApp = adminInitializeApp({ projectId: firebaseConfig.projectId });
+    db = adminGetFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+    console.log("🔥 Firebase Admin initialized successfully.");
+  } catch (error) {
+    console.log("⚠️ Could not initialize Firebase Admin SDK. Will fallback to data.json. Error:", (error as Error).message);
+  }
+  return db;
 }
 
 // Helper to get or seed data
 async function getPortfolioData() {
+  const firestoreDb = await getFirestoreDb();
   try {
-    if (db) {
-      const docRef = db.collection("content").doc("main");
+    if (firestoreDb) {
+      const docRef = firestoreDb.collection("content").doc("main");
       const docSnap = await docRef.get();
       if (docSnap.exists) {
         return docSnap.data();
@@ -50,9 +60,9 @@ async function getPortfolioData() {
   const parsedData = JSON.parse(fileContent);
 
   // If DB is available but didn't have data, seed it for next time
-  if (db) {
+  if (firestoreDb) {
     try {
-      await db.collection("content").doc("main").set(parsedData);
+      await firestoreDb.collection("content").doc("main").set(parsedData);
       console.log("🌱 Successfully seeded Firestore with initial data.json");
     } catch (err) {
       console.error("⚠️ Failed to seed Firestore: ", err);
@@ -180,10 +190,11 @@ app.get("/api/content", async (req, res) => {
 app.put("/api/content", requireAuth, async (req, res) => {
   try {
     const payload = req.body;
+    const firestoreDb = await getFirestoreDb();
     
     // Attempt saving to Firestore if available
-    if (db) {
-      await db.collection("content").doc("main").set(payload);
+    if (firestoreDb) {
+      await firestoreDb.collection("content").doc("main").set(payload);
     } else {
       // Fallback
       const dataPath = path.join(process.cwd(), "data.json");

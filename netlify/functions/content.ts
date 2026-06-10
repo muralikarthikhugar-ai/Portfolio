@@ -3,51 +3,27 @@ import jwt from "jsonwebtoken";
 import path from "path";
 import fs from "fs/promises";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { initializeFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-// Helper to search for and read files in serverless environment
-async function findAndReadFile(filename: string): Promise<string | null> {
-  const possiblePaths = [
-    path.join(process.cwd(), filename),
-    path.join(__dirname, filename),
-    path.join(__dirname, "..", filename),
-    path.join(__dirname, "..", "..", filename),
-    path.join(__dirname, "..", "..", "..", filename),
-  ];
-
-  for (const p of possiblePaths) {
-    try {
-      const content = await fs.readFile(p, "utf-8");
-      if (content && content.trim()) {
-        return content.trim();
-      }
-    } catch {
-      // Keep looking
-    }
-  }
-  return null;
-}
+// @ts-ignore
+import firebaseConfig from "../../firebase-applet-config.json";
+// @ts-ignore
+import rawData from "../../data.json";
 
 // Lazy initialization of Firebase Client SDK
 let db: any = null;
-async function getFirestoreDb() {
+function getFirestoreDb() {
   if (db) return db;
 
   try {
-    const configStr = await findAndReadFile("firebase-applet-config.json");
-    if (!configStr) {
-      console.warn("⚠️ No firebase-applet-config.json found for Netlify content function.");
-      return null;
-    }
-
-    const firebaseConfig = JSON.parse(configStr);
-    
-    // Initialize Web client SDK
+    // Initialize Web client SDK using the statically built config
     const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     
-    // getFirestore supports passing the database ID as the second parameter
-    db = getFirestore(clientApp, firebaseConfig.firestoreDatabaseId || "(default)");
-    console.log("🔥 Netlify Firebase Web Context initialized successfully.");
+    // Configure with experimental force long polling to prevent WebSocket timeout errors in Lambda execution
+    db = initializeFirestore(clientApp, {
+      experimentalForceLongPolling: true,
+    }, firebaseConfig.firestoreDatabaseId || "(default)");
+    console.log("🔥 Netlify Firebase Web Context initialized successfully via long-polling.");
   } catch (error: any) {
     console.error("⚠️ Failed to initialize Firebase in content function:", error.message);
   }
@@ -56,7 +32,7 @@ async function getFirestoreDb() {
 
 // Fetch helper to fetch content data from Firestore or local fallback
 async function getPortfolioData(): Promise<any> {
-  const firestoreDb = await getFirestoreDb();
+  const firestoreDb = getFirestoreDb();
   if (firestoreDb) {
     try {
       const docRef = doc(firestoreDb, "content", "main");
@@ -73,29 +49,24 @@ async function getPortfolioData(): Promise<any> {
     }
   }
 
-  // Local fallback
-  const fallbackJsonStr = await findAndReadFile("data.json");
-  if (fallbackJsonStr) {
-    const parsed = JSON.parse(fallbackJsonStr);
-    // If Firestore is working but main document is empty, seed it
-    if (firestoreDb) {
-      try {
-        const docRef = doc(firestoreDb, "content", "main");
-        const securePayload = {
-          ...parsed,
-          writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6"
-        };
-        await setDoc(docRef, securePayload);
-        console.log("🌱 Successfully seeded Firestore on Netlify with initial data.json");
-      } catch (err: any) {
-        console.error("⚠️ Failed to seed Firestore on Netlify:", err.message);
-      }
+  // Seed Firestore if it is working but empty
+  if (firestoreDb) {
+    try {
+      const docRef = doc(firestoreDb, "content", "main");
+      const securePayload = {
+        ...rawData,
+        writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6"
+      };
+      await setDoc(docRef, securePayload);
+      console.log("🌱 Successfully seeded empty Firestore with rawData.");
+    } catch (err: any) {
+      console.error("⚠️ Failed to seed Firestore on Netlify:", err.message);
     }
-    const { writeSecret, ...safeParsed } = parsed;
-    return safeParsed;
   }
 
-  throw new Error("Could not load portfolio data from Firestore or local fallback");
+  // Direct fallback to statically bundled rawData JSON
+  const { writeSecret, ...safeParsed } = rawData as any;
+  return safeParsed;
 }
 
 export const handler: Handler = async (event, context) => {
@@ -150,7 +121,7 @@ export const handler: Handler = async (event, context) => {
 
     try {
       const payload = JSON.parse(event.body || "{}");
-      const firestoreDb = await getFirestoreDb();
+      const firestoreDb = getFirestoreDb();
 
       if (firestoreDb) {
         const docRef = doc(firestoreDb, "content", "main");
@@ -160,7 +131,7 @@ export const handler: Handler = async (event, context) => {
         };
         await setDoc(docRef, securePayload);
       } else {
-        // Fallback local write (might be read-only/transient on Netlify but let's have it)
+        // Fallback local write to serverless runtime directory if Firestore is offline
         const targetPaths = [
           path.join(process.cwd(), "data.json"),
           path.join(__dirname, "data.json"),
