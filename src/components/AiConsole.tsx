@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Terminal, Send, HelpCircle, CornerDownLeft, Sparkles, Code2, ShieldAlert, BadgeCheck } from "lucide-react";
-import { projectsData, certificationsData, contactData, educationData } from "../types";
+import { usePortfolio } from "../DataContext";
 
 interface Message {
   type: "user" | "bot" | "command";
@@ -10,6 +10,7 @@ interface Message {
 }
 
 export default function AiConsole() {
+  const { projectsData, certificationsData, contactData, educationData } = usePortfolio();
   const [messages, setMessages] = useState<Message[]>([
     {
       type: "bot",

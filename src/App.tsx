@@ -36,23 +36,20 @@ import {
 } from "lucide-react";
 
 import { 
-  contactData, 
-  educationData, 
-  projectsData, 
-  certificationsData, 
-  skillsData, 
   Project,
   Certification
 } from "./types";
+import { usePortfolio } from "./DataContext";
 
 import ParticlesBackground from "./components/ParticlesBackground";
 import TiltCard from "./components/TiltCard";
 import AiConsole from "./components/AiConsole";
 import ProposalGenerator from "./components/ProposalGenerator";
-import Interactive3DSpiderRobot from "./components/Interactive3DSpiderRobot";
+import Interactive3DTicTacToe from "./components/Interactive3DTicTacToe";
 import InteractiveCursor from "./components/InteractiveCursor";
 
 export default function App() {
+  const { heroData, contactData, educationData, projectsData, certificationsData, skillsData } = usePortfolio();
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<"all" | "ai" | "web" | "security">("all");
   const [activeProjectSpec, setActiveProjectSpec] = useState<string | null>("medibot");
@@ -150,7 +147,7 @@ export default function App() {
               className="inline-flex items-center gap-2 bg-violet-950/40 border border-violet-500/20 text-violet-300 px-3 py-1 rounded-full text-xs font-mono"
             >
               <Sparkles className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
-              6th-Semester BCA Candidate
+              {heroData.badge}
             </motion.div>
 
             <div className="space-y-3">
@@ -160,7 +157,7 @@ export default function App() {
                 transition={{ delay: 0.2 }}
                 className="text-4xl sm:text-5xl lg:text-6xl font-display font-extrabold text-white tracking-tight leading-none"
               >
-                MURALI <span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400">KARTHIK</span>
+                {heroData.title.split(" ")[0] || "MURALI"} <span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400">{heroData.title.split(" ").slice(1).join(" ") || "KARTHIK"}</span>
               </motion.h1>
               <motion.p 
                 initial={{ opacity: 0, y: 15 }}
@@ -168,7 +165,7 @@ export default function App() {
                 transition={{ delay: 0.3 }}
                 className="text-lg sm:text-xl font-sans text-slate-300 font-medium pl-1 leading-normal"
               >
-                Final Year BCA Student | AI & Software Developer
+                {heroData.tagline}
               </motion.p>
             </div>
 
@@ -178,7 +175,7 @@ export default function App() {
               transition={{ delay: 0.4 }}
               className="text-sm sm:text-base text-slate-400 max-w-xl pl-1 font-sans leading-relaxed"
             >
-              A dedicated software engineering designer specializing in AI development, full-stack application routing, and data security vectors. Proficient in Python scripting, Javascript engines, and Supabase security relays to construct responsive, human-aligned software payloads.
+              {heroData.description}
             </motion.p>
 
             {/* Quick Credentials Pills */}
@@ -231,7 +228,7 @@ export default function App() {
             </motion.div>
           </div>
 
-          {/* Right Core Interactive 3D Orbit Canvas Element - Fully transparent floating spider mech */}
+          {/* Right Core Interactive 3D Orbit Canvas Element - Fully transparent floating Tic-Tac-Toe */}
           <div className="lg:col-span-5 flex items-center justify-center w-full relative">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
@@ -240,7 +237,7 @@ export default function App() {
               className="w-full max-w-[450px] aspect-square relative flex items-center justify-center"
               id="hero-3d-interactive-capsule"
             >
-              <Interactive3DSpiderRobot />
+              <Interactive3DTicTacToe />
             </motion.div>
           </div>
         </section>
@@ -714,12 +711,19 @@ export default function App() {
       </main>
 
       {/* FOOTER */}
-      <footer id="portfolio-main-footer" className="bg-[#02050c] border-t border-slate-900 py-8 px-4 text-center text-xs font-mono text-slate-600 space-y-2 mt-16">
+      <footer id="portfolio-main-footer" className="bg-[#02050c] border-t border-slate-900 py-8 px-4 text-center text-xs font-mono text-slate-600 space-y-2 mt-16 relative">
         <p>© 2026 Murali Karthik. Vetted Professional Web Portfolio and Resume Database.</p>
         <p className="text-[10px] text-slate-700 uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5 select-all">
           <Terminal className="w-3 h-3" />
           SYSTEM_PORT_INBOUND // OK
         </p>
+
+        {/* CMS Hidden Access Button */}
+        <div className="absolute right-8 bottom-8">
+           <a href="/cms" className="text-[9px] uppercase tracking-widest font-mono text-slate-800 hover:text-cyan-500 transition-colors border border-transparent hover:border-cyan-900 px-2 py-1 rounded">
+             WCMS_PORTAL
+           </a>
+        </div>
       </footer>
 
       {/* Certificate Verification Modal Overlay */}

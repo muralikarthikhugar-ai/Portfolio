@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Check, ArrowRight, Award, Flame, Star, Send, Cpu, ShieldCheck, Database, XCircle } from "lucide-react";
-import { projectsData, certificationsData, skillsData, contactData } from "../types";
+import { usePortfolio } from "../DataContext";
 
 export default function ProposalGenerator() {
+  const { projectsData, certificationsData, skillsData, contactData } = usePortfolio();
   const [selectedRole, setSelectedRole] = useState("ai");
   const [selectedSkills, setSelectedSkills] = useState<string[]>(["Python", "Chatbot Architecture"]);
   const [selectedMandates, setSelectedMandates] = useState<string[]>(["bca", "mastercard"]);

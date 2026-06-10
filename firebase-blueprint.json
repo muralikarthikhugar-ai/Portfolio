@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "PortfolioContent": {
+      "title": "PortfolioContent",
+      "description": "The main content payload for the entire portfolio",
+      "type": "object",
+      "properties": {
+        "contactData": { "type": "object" },
+        "educationData": { "type": "object" },
+        "projectsData": { "type": "array" },
+        "certificationsData": { "type": "array" },
+        "skillsData": { "type": "array" }
+      }
+    }
+  },
+  "firestore": {
+    "content/{contentId}": {
+      "schema": "PortfolioContent",
+      "description": "Stores the portfolio content"
+    }
+  }
+}

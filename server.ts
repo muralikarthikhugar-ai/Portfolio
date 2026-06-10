@@ -1,8 +1,12 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
+import fs from "fs/promises";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import jwt from "jsonwebtoken";
+import { initializeApp as adminInitializeApp } from "firebase-admin/app";
+import { getFirestore as adminGetFirestore } from "firebase-admin/firestore";
 
 dotenv.config();
 
@@ -10,6 +14,80 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password";
+const JWT_SECRET = process.env.JWT_SECRET || "fallback_jwt_secret_do_not_use_in_prod";
+
+// Initialize Firebase Admin
+let db: FirebaseFirestore.Firestore | null = null;
+try {
+  const firebaseConfig = require("./firebase-applet-config.json");
+  const adminApp = adminInitializeApp({ projectId: firebaseConfig.projectId });
+  db = adminGetFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+  console.log("🔥 Firebase Admin initialized successfully.");
+} catch (error) {
+  console.log("⚠️ Could not initialize Firebase Admin SDK. Will fallback to data.json. Error:", (error as Error).message);
+}
+
+// Helper to get or seed data
+async function getPortfolioData() {
+  try {
+    if (db) {
+      const docRef = db.collection("content").doc("main");
+      const docSnap = await docRef.get();
+      if (docSnap.exists) {
+        return docSnap.data();
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ Failed to read from Firestore DB, falling back to local file...", err);
+  }
+  
+  // Fallback to reading data.json (or initial seed)
+  const dataPath = path.join(process.cwd(), "data.json");
+  const fileContent = await fs.readFile(dataPath, "utf-8");
+  const parsedData = JSON.parse(fileContent);
+
+  // If DB is available but didn't have data, seed it for next time
+  if (db) {
+    try {
+      await db.collection("content").doc("main").set(parsedData);
+      console.log("🌱 Successfully seeded Firestore with initial data.json");
+    } catch (err) {
+      console.error("⚠️ Failed to seed Firestore: ", err);
+    }
+  }
+
+  return parsedData;
+}
+
+// Authentication Middleware
+const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "Unauthorized access: No token provided" });
+  }
+  
+  const token = authHeader.split(" ")[1];
+  try {
+    jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: "Unauthorized access: Invalid or expired token" });
+  }
+};
+
+// API for CMS: Login
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
+    res.json({ token, success: true });
+  } else {
+    res.status(401).json({ error: "Invalid credentials", success: false });
+  }
+});
 
 // Initialize server-side Gemini API client lazily
 let aiClient: GoogleGenAI | null = null;
@@ -32,8 +110,25 @@ function getGeminiClient() {
   return aiClient;
 }
 
-// System Persona instructions for Murali's AI Twin
-const SYSTEM_INSTRUCTION = `
+// Dynamically generate System Persona instructions based on Firestore/data.json
+async function getSystemInstruction() {
+  try {
+    const data = await getPortfolioData();
+
+    // Build the projects string
+    const projectsString = data.projectsData.map((p: any) => 
+      `   - ${p.title} - ${p.tagline}: ${p.description.join(" ")} (${p.techStack.join(", ")})`
+    ).join("\n");
+
+    // Build the certs string
+    const certsString = data.certificationsData.map((c: any) => 
+      `   - ${c.title} with ${c.issuer}: Verified via ${c.credentialCode}. Skills gained: ${c.skillsGained.join(", ")}`
+    ).join("\n");
+
+    // Attempt to read unstructured data from payload
+    const unstructuredKnowledge = data.unstructuredKnowledge || "";
+
+    return `
 You are the AI Twin of Murali Karthik, a highly skilled and enthusiastic software developer, machine learning enthusiast, and cybersecurity specialist.
 Always reply in first-person as Murali's AI Twin.
 Your tone is professional, technical, helpful, and highly motivated. Keep responses concise but visually clean, using bullet points or clean markdown where appropriate.
@@ -41,26 +136,67 @@ If asked general programming or computer science questions, relate them back to 
 
 Here are your verified credentials, certifications, and project records:
 1. Contact Details:
-   - Email: muralikarthikhugar@gmail.com
-   - Phone: +91 6360049503
-   - GitHub: https://github.com/muralikarthikhugar-ai
-   - LinkedIn: https://www.linkedin.com/in/muralikarthikhugar
-   - Location: Raichur, Karnataka, India
+   - Email: ${data.contactData.email}
+   - Phone: ${data.contactData.phone}
+   - GitHub: ${data.contactData.github}
+   - LinkedIn: ${data.contactData.linkedin}
+   - Location: ${data.contactData.address}
 2. Academic Background:
-   - Final semester (6th Semester) Bachelor of Computer Applications (BCA) student.
-   - College: Laxmi Venkatesh Desai (LVD) College
-   - University Affiliate: Raichur University, Karnataka, India
-   - Current Standing: Outstanding CGPA of 8.5/10.0
-   - Primary Specializations: Machine Learning pipelines, secure full-stack website engineering, system analysis, and cloud analytics.
-3. Industry Simulation Certifications (Completed with Forage in June 2026):
-   - Cybersecurity Simulation with Mastercard: Analyzed phishing and targeted threat vector trends dynamically. Verification ID: RpBs5NBxAboB98tFE.
-   - Data Labeling Job Simulation: Handled enterprise-scale dataset annotation, quality assessment, and PII auditing. Verification ID: w7Rk5cdTpEAdW5sFw.
+   - Degree: ${data.educationData.degree}
+   - College: ${data.educationData.college}
+   - University Affiliate: ${data.educationData.university}
+   - Current Standing: CGPA of ${data.educationData.cgpa} - ${data.educationData.semester}
+3. Industry Simulation Certifications:
+${certsString}
 4. Key Projects:
-   - MediBot - AI Emergency First-Aid Companion: Uses Gemini models to categorize and map urgent healthcare situations in < 1.1s latency.
-   - OmniBot - Offline System Companion Chatbot: Written in Python (CustomTkinter GUI) utilizing localized Ollama LLM offline streams for maximum data privacy.
-   - Cyber-Crime Reporting Portal: Integrates Supabase Postgres DB to log incident dossiers securely with speech dictation pipelines and detailed analytical telemetry charts.
-   - CS Mindspace: A high-fidelity academic syllabus portal and central resource database built using PHP, MySQL (phpMyAdmin), Bootstrap and Tailwind.
+${projectsString}
+
+Additional Knowledge Base (from data.txt):
+${unstructuredKnowledge}
 `;
+  } catch (error) {
+    console.error("Failed to read data for system instruction", error);
+    return "You are the AI Twin of Murali Karthik."; // Fallback
+  }
+}
+
+// API for CMS: Get content
+app.get("/api/content", async (req, res) => {
+  try {
+    const data = await getPortfolioData();
+    res.json(data);
+  } catch (error) {
+    console.error("Error reading data", error);
+    res.status(500).json({ error: "Failed to read data" });
+  }
+});
+
+// API for CMS: Update content
+app.put("/api/content", requireAuth, async (req, res) => {
+  try {
+    const payload = req.body;
+    
+    // Attempt saving to Firestore if available
+    if (db) {
+      await db.collection("content").doc("main").set(payload);
+    } else {
+      // Fallback
+      const dataPath = path.join(process.cwd(), "data.json");
+      await fs.writeFile(dataPath, JSON.stringify(payload, null, 2), "utf-8");
+    }
+
+    // Always keep data.txt synchronized with unstructuredKnowledge for dual persistence/integrity
+    if (typeof payload.unstructuredKnowledge === "string") {
+      const txtPath = path.join(process.cwd(), "data.txt");
+      await fs.writeFile(txtPath, payload.unstructuredKnowledge, "utf-8");
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error writing data", error);
+    res.status(500).json({ error: "Failed to write data" });
+  }
+});
 
 // Dynamic API endpoint for AI Twin Chat queries
 app.post("/api/chat", async (req, res) => {
@@ -81,12 +217,14 @@ app.post("/api/chat", async (req, res) => {
   }
 
   try {
+    const systemInstruction = await getSystemInstruction();
+
     // Format thread history for context if provided, or perform a direct single query with rich system instructions
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: message,
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
+        systemInstruction: systemInstruction,
         temperature: 0.7,
       },
     });
