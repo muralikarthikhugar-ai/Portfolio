@@ -5,8 +5,8 @@ import fs from "fs/promises";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import jwt from "jsonwebtoken";
-import { initializeApp as adminInitializeApp } from "firebase-admin/app";
-import { getFirestore as adminGetFirestore } from "firebase-admin/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 dotenv.config();
 
@@ -19,22 +19,23 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password";
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_jwt_secret_do_not_use_in_prod";
 
-// Initialize Firebase Admin dynamically and lazily
-let db: FirebaseFirestore.Firestore | null = null;
-let initializedFirebaseAdmin = false;
+// Initialize Firebase Client dynamically and lazily
+let db: any = null;
+let initializedFirebase = false;
 
-async function getFirestoreDb(): Promise<FirebaseFirestore.Firestore | null> {
-  if (initializedFirebaseAdmin) return db;
-  initializedFirebaseAdmin = true;
+async function getFirestoreDb(): Promise<any> {
+  if (initializedFirebase) return db;
+  initializedFirebase = true;
   try {
     const configPath = path.join(process.cwd(), "firebase-applet-config.json");
     const configStr = await fs.readFile(configPath, "utf-8");
     const firebaseConfig = JSON.parse(configStr);
-    const adminApp = adminInitializeApp({ projectId: firebaseConfig.projectId });
-    db = adminGetFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
-    console.log("🔥 Firebase Admin initialized successfully.");
+    
+    const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    db = getFirestore(clientApp);
+    console.log("🔥 Firebase Web Client initialized successfully on Server.");
   } catch (error) {
-    console.log("⚠️ Could not initialize Firebase Admin SDK. Will fallback to data.json. Error:", (error as Error).message);
+    console.log("⚠️ Could not initialize Firebase SDK. Will fallback to data.json. Error:", (error as Error).message);
   }
   return db;
 }
@@ -44,9 +45,9 @@ async function getPortfolioData() {
   const firestoreDb = await getFirestoreDb();
   try {
     if (firestoreDb) {
-      const docRef = firestoreDb.collection("content").doc("main");
-      const docSnap = await docRef.get();
-      if (docSnap.exists) {
+      const docRef = doc(firestoreDb, "content", "main");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
         return docSnap.data();
       }
     }
@@ -62,7 +63,8 @@ async function getPortfolioData() {
   // If DB is available but didn't have data, seed it for next time
   if (firestoreDb) {
     try {
-      await firestoreDb.collection("content").doc("main").set(parsedData);
+      const docRef = doc(firestoreDb, "content", "main");
+      await setDoc(docRef, { ...parsedData, writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6" });
       console.log("🌱 Successfully seeded Firestore with initial data.json");
     } catch (err) {
       console.error("⚠️ Failed to seed Firestore: ", err);
@@ -126,13 +128,13 @@ async function getSystemInstruction() {
     const data = await getPortfolioData();
 
     // Build the projects string
-    const projectsString = data.projectsData.map((p: any) => 
-      `   - ${p.title} - ${p.tagline}: ${p.description.join(" ")} (${p.techStack.join(", ")})`
+    const projectsString = (data.projectsData || []).map((p: any) => 
+      `   - ${p.title} - ${p.tagline}: ${(p.description || []).join(" ")} (${(p.techStack || []).join(", ")})`
     ).join("\n");
 
     // Build the certs string
-    const certsString = data.certificationsData.map((c: any) => 
-      `   - ${c.title} with ${c.issuer}: Verified via ${c.credentialCode}. Skills gained: ${c.skillsGained.join(", ")}`
+    const certsString = (data.certificationsData || []).map((c: any) => 
+      `   - ${c.title} with ${c.issuer}: Verified via ${c.credentialCode}. Skills gained: ${(c.skillsGained || []).join(", ")}`
     ).join("\n");
 
     // Attempt to read unstructured data from payload
@@ -146,16 +148,16 @@ If asked general programming or computer science questions, relate them back to 
 
 Here are your verified credentials, certifications, and project records:
 1. Contact Details:
-   - Email: ${data.contactData.email}
-   - Phone: ${data.contactData.phone}
-   - GitHub: ${data.contactData.github}
-   - LinkedIn: ${data.contactData.linkedin}
-   - Location: ${data.contactData.address}
+   - Email: ${data.contactData?.email || ""}
+   - Phone: ${data.contactData?.phone || ""}
+   - GitHub: ${data.contactData?.github || ""}
+   - LinkedIn: ${data.contactData?.linkedin || ""}
+   - Location: ${data.contactData?.address || ""}
 2. Academic Background:
-   - Degree: ${data.educationData.degree}
-   - College: ${data.educationData.college}
-   - University Affiliate: ${data.educationData.university}
-   - Current Standing: CGPA of ${data.educationData.cgpa} - ${data.educationData.semester}
+   - Degree: ${data.educationData?.degree || ""}
+   - College: ${data.educationData?.college || ""}
+   - University Affiliate: ${data.educationData?.university || ""}
+   - Current Standing: CGPA of ${data.educationData?.cgpa || ""} - ${data.educationData?.semester || ""}
 3. Industry Simulation Certifications:
 ${certsString}
 4. Key Projects:
@@ -181,8 +183,12 @@ app.get("/api/content", async (req, res) => {
       res.json(data);
     }
   } catch (error) {
-    console.error("Error reading data", error);
-    res.status(500).json({ error: "Failed to read data" });
+    console.error("🔴 Express Server Error reading content data:", error);
+    res.status(500).json({ 
+      error: "Failed to read data", 
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined 
+    });
   }
 });
 
@@ -194,7 +200,9 @@ app.put("/api/content", requireAuth, async (req, res) => {
     
     // Attempt saving to Firestore if available
     if (firestoreDb) {
-      await firestoreDb.collection("content").doc("main").set(payload);
+      const docRef = doc(firestoreDb, "content", "main");
+      const securePayload = { ...payload, writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6" };
+      await setDoc(docRef, securePayload);
     } else {
       // Fallback
       const dataPath = path.join(process.cwd(), "data.json");
@@ -209,8 +217,12 @@ app.put("/api/content", requireAuth, async (req, res) => {
     
     res.json({ success: true });
   } catch (error) {
-    console.error("Error writing data", error);
-    res.status(500).json({ error: "Failed to write data" });
+    console.error("🔴 Express Server Error writing content data:", error);
+    res.status(500).json({ 
+      error: "Failed to write data", 
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined 
+    });
   }
 });
 

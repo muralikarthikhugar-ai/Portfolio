@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import path from "path";
 import fs from "fs/promises";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { initializeFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { initializeFirestore, getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 // @ts-ignore
 import firebaseConfig from "../../firebase-applet-config.json";
@@ -19,11 +19,15 @@ function getFirestoreDb() {
     // Initialize Web client SDK using the statically built config
     const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     
-    // Configure with experimental force long polling to prevent WebSocket timeout errors in Lambda execution
-    db = initializeFirestore(clientApp, {
-      experimentalForceLongPolling: true,
-    }, firebaseConfig.firestoreDatabaseId || "(default)");
-    console.log("🔥 Netlify Firebase Web Context initialized successfully via long-polling.");
+    try {
+      db = getFirestore(clientApp);
+    } catch (e) {
+      // Configure with experimental force long polling to prevent WebSocket timeout errors in Lambda execution
+      db = initializeFirestore(clientApp, {
+        experimentalForceLongPolling: true,
+      }, firebaseConfig.firestoreDatabaseId || "(default)");
+    }
+    console.log("🔥 Netlify Firebase Web Context initialized successfully.");
   } catch (error: any) {
     console.error("⚠️ Failed to initialize Firebase in content function:", error.message);
   }
@@ -91,7 +95,11 @@ export const handler: Handler = async (event, context) => {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*" 
         },
-        body: JSON.stringify({ error: error.message }),
+        body: JSON.stringify({ 
+          error: "Failed to read data via Netlify function", 
+          message: error?.message || String(error),
+          stack: error?.stack
+        }),
       };
     }
   }
@@ -175,7 +183,11 @@ export const handler: Handler = async (event, context) => {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*" 
         },
-        body: JSON.stringify({ error: "Failed to write data", details: error.message }),
+        body: JSON.stringify({ 
+          error: "Failed to write data via Netlify function", 
+          message: error?.message || String(error),
+          stack: error?.stack
+        }),
       };
     }
   }

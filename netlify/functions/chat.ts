@@ -1,7 +1,7 @@
 import { Handler } from "@netlify/functions";
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { initializeFirestore, doc, getDoc } from "firebase/firestore";
+import { initializeFirestore, getFirestore, doc, getDoc } from "firebase/firestore";
 
 // @ts-ignore
 import firebaseConfig from "../../firebase-applet-config.json";
@@ -15,9 +15,13 @@ function getFirestoreDb() {
 
   try {
     const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = initializeFirestore(clientApp, {
-      experimentalForceLongPolling: true,
-    }, firebaseConfig.firestoreDatabaseId || "(default)");
+    try {
+      db = getFirestore(clientApp);
+    } catch (e) {
+      db = initializeFirestore(clientApp, {
+        experimentalForceLongPolling: true,
+      }, firebaseConfig.firestoreDatabaseId || "(default)");
+    }
   } catch (error: any) {
     console.error("⚠️ Failed to initialize Firebase in chat function:", error.message);
   }
@@ -150,7 +154,7 @@ export const handler: Handler = async (event, context) => {
       },
       body: JSON.stringify({ text: response.text || "I was unable to formulate a response." }),
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Netlify Serverless Function Error:", error);
     return {
       statusCode: 500,
@@ -159,8 +163,9 @@ export const handler: Handler = async (event, context) => {
         "Access-Control-Allow-Origin": "*"
       },
       body: JSON.stringify({
-        error: "Serverless function execution failure.",
-        details: error instanceof Error ? error.message : String(error),
+        error: "Serverless function execution failure under Netlify chat function.",
+        message: error?.message || String(error),
+        stack: error?.stack,
       }),
     };
   }
