@@ -8,7 +8,7 @@
 [functions]
   # Tell Netlify to bundle the serverless functions as ES Modules or use automated bundlers
   node_bundler = "esbuild"
-  included_files = ["data.txt", "data.json"]
+  included_files = ["data.txt", "data.json", "firebase-applet-config.json"]
 
 # Elegant route rewrites
 # This maps client-side requests from "/api/chat" to "/.netlify/functions/chat" transparently

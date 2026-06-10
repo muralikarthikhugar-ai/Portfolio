@@ -20,10 +20,15 @@ export default function AiConsole() {
   ]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
   }, [messages, isTyping]);
 
   const presetPrompts = [
@@ -205,7 +210,7 @@ You can try using direct keywords like **'projects'**, **'skills'**, **'educatio
       </div>
 
       {/* Message Output History */}
-      <div className="flex-1 p-4 md:p-6 h-[340px] overflow-y-auto font-mono text-sm leading-relaxed text-gray-300 space-y-4 scrollbar-thin scrollbar-thumb-violet-500/20">
+      <div ref={chatContainerRef} className="flex-1 p-4 md:p-6 h-[340px] overflow-y-auto font-mono text-sm leading-relaxed text-gray-300 space-y-4 scrollbar-thin scrollbar-thumb-violet-500/20">
         {messages.map((msg, idx) => (
           <div
             id={`msg-node-${idx}`}
@@ -296,7 +301,7 @@ You can try using direct keywords like **'projects'**, **'skills'**, **'educatio
             </div>
           </div>
         )}
-        <div ref={scrollRef} />
+
       </div>
 
       {/* Preset Command Buttons */}

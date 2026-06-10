@@ -95,7 +95,7 @@ export default function App() {
             </div>
             <div className="flex flex-col">
               <span className="font-display font-bold text-sm tracking-tight text-white leading-none">MURALI KARTHIK</span>
-              <span className="font-mono text-[9px] text-cyan-400 font-medium tracking-widest mt-0.5 uppercase">AI DEVELOPER</span>
+              <span className="font-mono text-[9px] text-cyan-400 font-medium tracking-widest mt-0.5 uppercase">Final Year BCA Student | AI & Software Developer</span>
             </div>
           </motion.div>
 
