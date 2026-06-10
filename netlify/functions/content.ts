@@ -2,8 +2,8 @@ import { Handler } from "@netlify/functions";
 import jwt from "jsonwebtoken";
 import path from "path";
 import fs from "fs/promises";
-import { initializeApp as adminInitializeApp, getApps, getApp } from "firebase-admin/app";
-import { getFirestore as adminGetFirestore } from "firebase-admin/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 // Helper to search for and read files in serverless environment
 async function findAndReadFile(filename: string): Promise<string | null> {
@@ -28,7 +28,7 @@ async function findAndReadFile(filename: string): Promise<string | null> {
   return null;
 }
 
-// Lazy initialization of Firebase Admin
+// Lazy initialization of Firebase Client SDK
 let db: any = null;
 async function getFirestoreDb() {
   if (db) return db;
@@ -42,17 +42,14 @@ async function getFirestoreDb() {
 
     const firebaseConfig = JSON.parse(configStr);
     
-    let adminApp;
-    if (getApps().length === 0) {
-      adminApp = adminInitializeApp({ projectId: firebaseConfig.projectId });
-    } else {
-      adminApp = getApp();
-    }
+    // Initialize Web client SDK
+    const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     
-    db = adminGetFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
-    console.log("🔥 Netlify Firebase Admin initialized successfully.");
+    // getFirestore supports passing the database ID as the second parameter
+    db = getFirestore(clientApp, firebaseConfig.firestoreDatabaseId || "(default)");
+    console.log("🔥 Netlify Firebase Web Context initialized successfully.");
   } catch (error: any) {
-    console.error("⚠️ Failed to initialize Firebase Admin in content function:", error.message);
+    console.error("⚠️ Failed to initialize Firebase in content function:", error.message);
   }
   return db;
 }
@@ -62,13 +59,13 @@ async function getPortfolioData(): Promise<any> {
   const firestoreDb = await getFirestoreDb();
   if (firestoreDb) {
     try {
-      const docRef = firestoreDb.collection("content").doc("main");
-      const docSnap = await docRef.get();
-      if (docSnap.exists) {
+      const docRef = doc(firestoreDb, "content", "main");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
         return docSnap.data();
       }
-    } catch (err) {
-      console.warn("⚠️ Failed to read Firestore, falling back to local file...", err);
+    } catch (err: any) {
+      console.warn("⚠️ Failed to read Firestore, falling back to local file...", err.message);
     }
   }
 
@@ -79,10 +76,11 @@ async function getPortfolioData(): Promise<any> {
     // If Firestore is working but main document is empty, seed it
     if (firestoreDb) {
       try {
-        await firestoreDb.collection("content").doc("main").set(parsed);
+        const docRef = doc(firestoreDb, "content", "main");
+        await setDoc(docRef, parsed);
         console.log("🌱 Successfully seeded Firestore on Netlify with initial data.json");
-      } catch (err) {
-        console.error("⚠️ Failed to seed Firestore on Netlify:", err);
+      } catch (err: any) {
+        console.error("⚠️ Failed to seed Firestore on Netlify:", err.message);
       }
     }
     return parsed;
@@ -100,13 +98,19 @@ export const handler: Handler = async (event, context) => {
       const data = await getPortfolioData();
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*" 
+        },
         body: JSON.stringify(data),
       };
     } catch (error: any) {
       return {
         statusCode: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*" 
+        },
         body: JSON.stringify({ error: error.message }),
       };
     }
@@ -140,9 +144,10 @@ export const handler: Handler = async (event, context) => {
       const firestoreDb = await getFirestoreDb();
 
       if (firestoreDb) {
-        await firestoreDb.collection("content").doc("main").set(payload);
+        const docRef = doc(firestoreDb, "content", "main");
+        await setDoc(docRef, payload);
       } else {
-        // Fallback local write (might be read-only/transient on Netlify but lets have it)
+        // Fallback local write (might be read-only/transient on Netlify but let's have it)
         const targetPaths = [
           path.join(process.cwd(), "data.json"),
           path.join(__dirname, "data.json"),
@@ -173,16 +178,35 @@ export const handler: Handler = async (event, context) => {
 
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*" 
+        },
         body: JSON.stringify({ success: true }),
       };
     } catch (error: any) {
       return {
         statusCode: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*" 
+        },
         body: JSON.stringify({ error: "Failed to write data", details: error.message }),
       };
     }
+  }
+
+  // Handle preflight options for CORS
+  if (event.httpMethod === "OPTIONS") {
+    return {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
+      },
+      body: ""
+    };
   }
 
   // Unsupported methods

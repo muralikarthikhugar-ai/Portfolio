@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   motion, 
   AnimatePresence 
@@ -55,6 +55,15 @@ export default function App() {
   const [activeProjectSpec, setActiveProjectSpec] = useState<string | null>("medibot");
   const [hoveredSkillId, setHoveredSkillId] = useState<string | null>(null);
   const [selectedCertToShow, setSelectedCertToShow] = useState<Certification | null>(null);
+
+  // Force scroll position to the top header / hero section on refresh or initial mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    // Clear hash link parameters with zero-latency from address bar to stop automatic browser anchor scroll
+    if (window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
 
   // Copy Email Helper
   const handleCopyEmail = () => {
