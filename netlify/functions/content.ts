@@ -18,16 +18,17 @@ function getFirestoreDb() {
   try {
     // Initialize Web client SDK using the statically built config
     const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
     
     try {
-      db = getFirestore(clientApp);
-    } catch (e) {
-      // Configure with experimental force long polling to prevent WebSocket timeout errors in Lambda execution
       db = initializeFirestore(clientApp, {
         experimentalForceLongPolling: true,
-      }, firebaseConfig.firestoreDatabaseId || "(default)");
+      }, dbId);
+      console.log(`🔥 Netlify Firebase Web Client initialized database: ${dbId} with long-polling.`);
+    } catch (e) {
+      db = getFirestore(clientApp, dbId);
+      console.log(`🔥 Netlify Firebase Web Client acquired existing database: ${dbId}`);
     }
-    console.log("🔥 Netlify Firebase Web Context initialized successfully.");
   } catch (error: any) {
     console.error("⚠️ Failed to initialize Firebase in content function:", error.message);
   }

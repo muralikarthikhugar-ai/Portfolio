@@ -6,7 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import jwt from "jsonwebtoken";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, initializeFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 dotenv.config();
 
@@ -18,6 +18,24 @@ app.use(express.json());
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password";
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_jwt_secret_do_not_use_in_prod";
+
+// Promise Timeout Helper to prevent serverless operations from hanging indefinitely
+function withTimeout<T>(promise: Promise<T>, ms: number, label = "Operation"): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    promise
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 // Initialize Firebase Client dynamically and lazily
 let db: any = null;
@@ -32,8 +50,17 @@ async function getFirestoreDb(): Promise<any> {
     const firebaseConfig = JSON.parse(configStr);
     
     const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(clientApp);
-    console.log("🔥 Firebase Web Client initialized successfully on Server.");
+    const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+    
+    try {
+      db = initializeFirestore(clientApp, {
+        experimentalForceLongPolling: true,
+      }, dbId);
+      console.log(`🔥 Firebase Web Client initialized with long-polling on Server for database: ${dbId}`);
+    } catch (e) {
+      db = getFirestore(clientApp, dbId);
+      console.log(`🔥 Firebase Web Client acquired existing database on Server: ${dbId}`);
+    }
   } catch (error) {
     console.log("⚠️ Could not initialize Firebase SDK. Will fallback to data.json. Error:", (error as Error).message);
   }
@@ -46,13 +73,13 @@ async function getPortfolioData() {
   try {
     if (firestoreDb) {
       const docRef = doc(firestoreDb, "content", "main");
-      const docSnap = await getDoc(docRef);
+      const docSnap = await withTimeout(getDoc(docRef), 3000, "Firestore read");
       if (docSnap.exists()) {
         return docSnap.data();
       }
     }
   } catch (err) {
-    console.warn("⚠️ Failed to read from Firestore DB, falling back to local file...", err);
+    console.warn("⚠️ Failed to read from Firestore DB, falling back to local file...", (err as Error).message);
   }
   
   // Fallback to reading data.json (or initial seed)
@@ -64,10 +91,10 @@ async function getPortfolioData() {
   if (firestoreDb) {
     try {
       const docRef = doc(firestoreDb, "content", "main");
-      await setDoc(docRef, { ...parsedData, writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6" });
+      await withTimeout(setDoc(docRef, { ...parsedData, writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6" }), 3000, "Firestore seed");
       console.log("🌱 Successfully seeded Firestore with initial data.json");
     } catch (err) {
-      console.error("⚠️ Failed to seed Firestore: ", err);
+      console.error("⚠️ Failed to seed Firestore: ", (err as Error).message);
     }
   }
 
@@ -202,7 +229,7 @@ app.put("/api/content", requireAuth, async (req, res) => {
     if (firestoreDb) {
       const docRef = doc(firestoreDb, "content", "main");
       const securePayload = { ...payload, writeSecret: "MuraliKarthik_SecureWriteSecret_2026_a8d7e6" };
-      await setDoc(docRef, securePayload);
+      await withTimeout(setDoc(docRef, securePayload), 5000, "Firestore write");
     } else {
       // Fallback
       const dataPath = path.join(process.cwd(), "data.json");

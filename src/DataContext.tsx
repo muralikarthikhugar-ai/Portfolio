@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Contact, Project, Certification, SkillCategory, Education } from "./types";
+import rawData from "../data.json";
 
 export interface HeroData {
   title: string;
@@ -40,6 +41,9 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       setData(jsonData);
       setError(null);
     } catch (err: any) {
+      console.warn("⚠️ DataContext API fetch failed, falling back to static local data.json:", err.message);
+      const { writeSecret, ...safeRaw } = rawData as any;
+      setData(safeRaw);
       setError(err.message);
     } finally {
       setLoading(false);

@@ -15,12 +15,16 @@ function getFirestoreDb() {
 
   try {
     const clientApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+    
     try {
-      db = getFirestore(clientApp);
-    } catch (e) {
       db = initializeFirestore(clientApp, {
         experimentalForceLongPolling: true,
-      }, firebaseConfig.firestoreDatabaseId || "(default)");
+      }, dbId);
+      console.log(`🔥 Netlify Firebase Web Client initialized database: ${dbId} with long-polling.`);
+    } catch (e) {
+      db = getFirestore(clientApp, dbId);
+      console.log(`🔥 Netlify Firebase Web Client acquired existing database: ${dbId}`);
     }
   } catch (error: any) {
     console.error("⚠️ Failed to initialize Firebase in chat function:", error.message);
